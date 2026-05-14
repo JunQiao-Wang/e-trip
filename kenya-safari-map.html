@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>肯尼亚行程 · 卫星地图</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a222d;
+      --text: #e8eef4;
+      --muted: #8b9aad;
+      --accent: #3d9cfd;
+      --accent-dim: #2a6fad;
+      --border: #2a3544;
+      --hotel: #22c55e;
+      --airport: #f59e0b;
+      --pickup: #a78bfa;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); }
+    .app { display: flex; height: 100%; position: relative; }
+    .sidebar {
+      width: min(380px, 92vw);
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      z-index: 1000;
+      transition: transform 0.25s ease;
+    }
+    .sidebar.collapsed { transform: translateX(-100%); }
+    .sidebar-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .sidebar-header h1 { margin: 0 0 6px; font-size: 1.05rem; font-weight: 600; }
+    .sidebar-header p { margin: 0; font-size: 0.78rem; color: var(--muted); line-height: 1.45; }
+    .btn-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    button {
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+    }
+    button:hover { border-color: var(--accent-dim); }
+    button.primary {
+      background: linear-gradient(135deg, var(--accent-dim), var(--accent));
+      border-color: transparent;
+      color: #fff;
+      font-weight: 600;
+    }
+    button.primary:hover { filter: brightness(1.08); }
+    button.day-btn { text-align: left; width: 100%; }
+    button.day-btn.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+    .day-list { overflow-y: auto; flex: 1; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+    .day-meta { font-size: 0.72rem; color: var(--muted); margin-top: 4px; }
+    .map-wrap { flex: 1; position: relative; min-width: 0; }
+    #map { height: 100%; width: 100%; }
+    .fab-menu {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 1100;
+      display: none;
+      gap: 8px;
+    }
+    @media (max-width: 768px) {
+      .sidebar {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        max-width: 88vw;
+        box-shadow: 4px 0 24px rgba(0,0,0,0.45);
+      }
+      .sidebar.collapsed { transform: translateX(-100%); }
+      .fab-menu { display: flex; }
+    }
+    .leaflet-tooltip.map-stop-label {
+      background: rgba(15, 20, 26, 0.92);
+      color: #f1f5f9;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.35;
+      max-width: 220px;
+      white-space: normal;
+      text-align: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+      pointer-events: none;
+    }
+    .leaflet-tooltip.map-stop-label:before {
+      display: none;
+    }
+    .leaflet-container { background: #1a222d; font-family: inherit; }
+    .legend {
+      font-size: 0.72rem;
+      color: var(--muted);
+      padding: 10px 16px 12px;
+      border-top: 1px solid var(--border);
+      line-height: 1.5;
+    }
+    .route-status {
+      margin: 8px 0 0;
+      font-size: 0.72rem;
+      color: var(--accent);
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <h1>肯尼亚行程预览</h1>
+        <p>卫星底图（Esri）· 点击日期只看当日 ·「全览」看全程。<strong>驾车距离与时间</strong>在联网时由 <abbr title="Open Source Routing Machine">OSRM</abbr> 按 <strong>OpenStreetMap 路网</strong>计算；保护区/土路若未录入地图，结果可能与实际有偏差。</p>
+        <p id="route-status" class="route-status" aria-live="polite"></p>
+        <div class="btn-row">
+          <button type="button" class="primary" id="btn-overview">全览</button>
+          <button type="button" id="btn-close-sidebar" class="hide-desktop">收起</button>
+        </div>
+      </div>
+      <div class="day-list" id="day-list" role="tablist" aria-label="按天筛选"></div>
+      <div class="legend">
+        全览时每个<strong>物理地点</strong>仅显示一个名称标签与标记。坐标可在文件内 <code>ITINERARY</code> 中替换。驾车路线由 OSRM 在线计算，需<strong>联网</strong>；若 <code>file://</code> 无法加载路线，请用 <code>python3 -m http.server</code> 本地打开。
+      </div>
+    </aside>
+    <div class="map-wrap">
+      <div class="fab-menu">
+        <button type="button" id="btn-open-sidebar">行程</button>
+      </div>
+      <div id="map" role="application" aria-label="地图"></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script>
+    /**
+     * 在 Google 地图搜索地点 → 右键复制经纬度 → 替换下方 lat/lng。
+     * 以下为公开区域/营地近似坐标，仅作预览。
+     */
+    /** OSRM 演示服务（全球 OSM 驾车路网）。可改为自建实例以提升稳定性。 */
+    const OSRM_BASE = "https://router.project-osrm.org";
+
+    const ITINERARY = {
+      year: 2026,
+      flightNote:
+        "NBO 内罗毕焦莫肯亚塔国际机场 T1 · B13:45—19:45 经阿布扎比中转约 1h25m；无需过境签；行李直达。",
+      stops: {
+        nairobi_pickup: {
+          id: "nairobi_pickup",
+          area: "内罗毕",
+          hotelDest: "接人酒店·占位",
+          type: "pickup",
+          lat: -1.286389,
+          lng: 36.817223,
+          note: "未知酒店名：暂用市中心占位，请替换为你的酒店坐标。",
+        },
+        figtree_mara: {
+          id: "figtree_mara",
+          area: "马赛马拉",
+          hotelDest: "Figtree mara camp",
+          type: "hotel",
+          lat: -1.4012,
+          lng: 35.0289,
+          note: "6.19–6.21 住宿；坐标请按营地精确位置微调。",
+        },
+        naivasha_simba: {
+          id: "naivasha_simba",
+          area: "奈瓦沙湖",
+          hotelDest: "Naivasha simba lodges",
+          type: "hotel",
+          lat: -0.7991,
+          lng: 36.2874,
+          note: "Lake Naivasha 区域住宿。",
+        },
+        mount_kenya_leisure: {
+          id: "mount_kenya_leisure",
+          area: "肯尼亚山",
+          hotelDest: "Mount Kenya Leisure Lodge",
+          type: "hotel",
+          lat: -0.0478,
+          lng: 37.0621,
+          note: "近纳纽基一带，占位坐标可替换。",
+        },
+        samburu_simba: {
+          id: "samburu_simba",
+          area: "桑布鲁",
+          hotelDest: "Samburu simba",
+          type: "hotel",
+          lat: 0.4912,
+          lng: 37.5318,
+          note: "桑布鲁保护区附近住宿。",
+        },
+        the_ark: {
+          id: "the_ark",
+          area: "阿伯德尔",
+          hotelDest: "The Ark lodge",
+          type: "hotel",
+          lat: -0.4031,
+          lng: 36.7228,
+          note: "The Ark 树屋 lodge，占位坐标可替换。",
+        },
+        jkia: {
+          id: "jkia",
+          area: "内罗毕机场",
+          hotelDest: "JKIA / NBO",
+          type: "airport",
+          lat: -1.319167,
+          lng: 36.9275,
+          note: "6.28 11:30 前抵达；离境航班信息见侧栏年份备注。",
+        },
+      },
+      days: [
+        {
+          id: "2026-06-19",
+          label: "6 月 19 日",
+          title: "内罗毕 → 马赛马拉",
+          timeNote: "约 06:30 出发 · 至 马赛马拉（Figtree mara camp）",
+          stopIds: ["nairobi_pickup", "figtree_mara"],
+          legs: [
+            {
+              from: "nairobi_pickup",
+              to: "figtree_mara",
+              distanceKm: 265,
+              durationText: "约 5.5–7 小时",
+              note: "公路+园区入口与园内路段，耗时波动大。",
+            },
+          ],
+        },
+        {
+          id: "2026-06-20",
+          label: "6 月 20 日",
+          title: "马赛马拉",
+          timeNote: "马赛马拉（Figtree mara camp）",
+          stopIds: ["figtree_mara"],
+          legs: [],
+        },
+        {
+          id: "2026-06-21",
+          label: "6 月 21 日",
+          title: "马赛马拉",
+          timeNote: "马赛马拉（Figtree mara camp）",
+          stopIds: ["figtree_mara"],
+          legs: [],
+        },
+        {
+          id: "2026-06-22",
+          label: "6 月 22 日",
+          title: "马赛马拉 → 奈瓦沙",
+          timeNote: "换宿 · 奈瓦沙湖（Naivasha simba lodges）",
+          stopIds: ["figtree_mara", "naivasha_simba"],
+          legs: [
+            {
+              from: "figtree_mara",
+              to: "naivasha_simba",
+              distanceKm: 255,
+              durationText: "约 5.5–7 小时",
+              note: "长距离公路，遇雨/交通会延长。",
+            },
+          ],
+        },
+        {
+          id: "2026-06-23",
+          label: "6 月 23 日",
+          title: "奈瓦沙 → 肯尼亚山",
+          timeNote: "换宿 · 肯尼亚山（Mount Kenya Leisure Lodge）",
+          stopIds: ["naivasha_simba", "mount_kenya_leisure"],
+          legs: [
+            {
+              from: "naivasha_simba",
+              to: "mount_kenya_leisure",
+              distanceKm: 175,
+              durationText: "约 3.5–4.5 小时",
+              note: "",
+            },
+          ],
+        },
+        {
+          id: "2026-06-24",
+          label: "6 月 24 日",
+          title: "肯尼亚山 → 桑布鲁",
+          timeNote: "换宿 · 桑布鲁（Samburu simba）",
+          stopIds: ["mount_kenya_leisure", "samburu_simba"],
+          legs: [
+            {
+              from: "mount_kenya_leisure",
+              to: "samburu_simba",
+              distanceKm: 120,
+              durationText: "约 2.5–3.5 小时",
+              note: "",
+            },
+          ],
+        },
+        {
+          id: "2026-06-25",
+          label: "6 月 25 日",
+          title: "桑布鲁",
+          timeNote: "桑布鲁（Samburu simba）",
+          stopIds: ["samburu_simba"],
+          legs: [],
+        },
+        {
+          id: "2026-06-26",
+          label: "6 月 26 日",
+          title: "桑布鲁 → 阿伯德尔",
+          timeNote: "换宿 · 阿伯德尔（The Ark lodge）",
+          stopIds: ["samburu_simba", "the_ark"],
+          legs: [
+            {
+              from: "samburu_simba",
+              to: "the_ark",
+              distanceKm: 165,
+              durationText: "约 4–5.5 小时",
+              note: "山区与园区道路可能较慢。",
+            },
+          ],
+        },
+        {
+          id: "2026-06-27",
+          label: "6 月 27 日",
+          title: "阿伯德尔",
+          timeNote: "阿伯德尔（The Ark lodge）",
+          stopIds: ["the_ark"],
+          legs: [],
+        },
+        {
+          id: "2026-06-28",
+          label: "6 月 28 日",
+          title: "阿伯德尔 → 内罗毕机场",
+          timeNote: "11:30 前抵 内罗毕机场（JKIA）· 行程结束",
+          stopIds: ["the_ark", "jkia"],
+          legs: [
+            {
+              from: "the_ark",
+              to: "jkia",
+              distanceKm: 155,
+              durationText: "约 3–4 小时",
+              note: "含入园出园与市区路段；请预留值机时间。",
+            },
+          ],
+        },
+      ],
+    };
+
+    function stopIcon(type) {
+      const colors = {
+        hotel: "var(--hotel)",
+        airport: "var(--airport)",
+        pickup: "var(--pickup)",
+        activity: "#38bdf8",
+        transfer: "#94a3b8",
+      };
+      const c = colors[type] || "#94a3b8";
+      return L.divIcon({
+        className: "",
+        html:
+          '<div style="width:14px;height:14px;border-radius:50%;background:' +
+          c +
+          ';border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.45)"></div>',
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+      });
+    }
+
+    function greatCircleLatLngs(a, b, segments) {
+      const d2r = Math.PI / 180;
+      const lat1 = a.lat * d2r;
+      const lng1 = a.lng * d2r;
+      const lat2 = b.lat * d2r;
+      const lng2 = b.lng * d2r;
+      const d = 2 * Math.asin(
+        Math.sqrt(
+          Math.pow(Math.sin((lat1 - lat2) / 2), 2) +
+            Math.cos(lat1) * Math.cos(lat2) * Math.pow(Math.sin((lng1 - lng2) / 2), 2)
+        )
+      );
+      if (!d || d < 1e-8) return [[a.lat, a.lng], [b.lat, b.lng]];
+      const out = [];
+      for (let i = 0; i <= segments; i++) {
+        const f = i / segments;
+        const A = Math.sin((1 - f) * d) / Math.sin(d);
+        const B = Math.sin(f * d) / Math.sin(d);
+        const x = A * Math.cos(lat1) * Math.cos(lng1) + B * Math.cos(lat2) * Math.cos(lng2);
+        const y = A * Math.cos(lat1) * Math.sin(lng1) + B * Math.cos(lat2) * Math.sin(lng2);
+        const z = A * Math.sin(lat1) + B * Math.sin(lat2);
+        const lat = Math.atan2(z, Math.sqrt(x * x + y * y)) / d2r;
+        const lng = Math.atan2(y, x) / d2r;
+        out.push([lat, lng]);
+      }
+      return out;
+    }
+
+    const map = L.map("map", { zoomControl: true }).setView([-0.5, 37.2], 6);
+
+    L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      {
+        maxZoom: 19,
+        attribution:
+          '&copy; Esri, Maxar, Earthstar Geographics &mdash; <a href="https://www.esri.com/">Esri</a>',
+      }
+    ).addTo(map);
+
+    L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+      { maxZoom: 19, opacity: 0.55 }
+    ).addTo(map);
+
+    const layersByDay = {};
+    const allBounds = [];
+    let activeDayFilter = null;
+
+    function stopDestinationTitle(stop) {
+      if (stop.area != null && stop.hotelDest != null && String(stop.hotelDest).length) {
+        return stop.area + "（" + stop.hotelDest + "）";
+      }
+      return stop.name || stop.area || stop.hotelDest || "";
+    }
+
+    function stopPopupHtml(stop) {
+      const typeLabel = { hotel: "住宿", airport: "机场", pickup: "接机/出发", activity: "活动", transfer: "交通" }[stop.type] || stop.type;
+      let html =
+        "<strong>" +
+        stopDestinationTitle(stop) +
+        "</strong><br/><span style='opacity:.85'>" +
+        typeLabel +
+        "</span>";
+      if (stop.note) html += "<br/><small style='opacity:.9'>" + stop.note + "</small>";
+      return html;
+    }
+
+    function formatDriveDuration(sec) {
+      const mTotal = Math.round(sec / 60);
+      const h = Math.floor(mTotal / 60);
+      const m = mTotal % 60;
+      if (h <= 0) return "约 " + m + " 分钟";
+      if (m === 0) return "约 " + h + " 小时";
+      return "约 " + h + " 小时 " + m + " 分";
+    }
+
+    function legPopupHtml(leg) {
+      const from = ITINERARY.stops[leg.from];
+      const to = ITINERARY.stops[leg.to];
+      let html =
+        "<strong>" +
+        stopDestinationTitle(from) +
+        " → " +
+        stopDestinationTitle(to) +
+        "</strong><br/>";
+      if (leg._osrm && leg._osrm.ok) {
+        html +=
+          "<strong>" +
+          formatDriveDuration(leg._osrm.durationSec) +
+          "</strong> · 路网约 <strong>" +
+          leg._osrm.distanceKm.toFixed(0) +
+          " km</strong>";
+        html +=
+          "<br/><small style='opacity:.85'>基于 OSRM（OpenStreetMap 驾车路网）。不含未上图土路、园区门禁与拥堵。</small>";
+      } else {
+        html += "约 <strong>" + leg.durationText + "</strong>";
+        if (leg.distanceKm) html += " · 直线/参考约 " + leg.distanceKm + " km";
+        html +=
+          "<br/><small style='opacity:.85'>" +
+          (leg._osrm && leg._osrm.error ? "路网规划不可用（" + leg._osrm.error + "），以下为数据内参考。" : "路网数据加载中或不可用时的参考值。") +
+          "</small>";
+      }
+      if (leg.note) html += "<br/><small>" + leg.note + "</small>";
+      return html;
+    }
+
+    function fetchOsrmDrivingRoute(lat1, lng1, lat2, lng2) {
+      const q = function (x) {
+        return Number(x).toFixed(6);
+      };
+      const url =
+        OSRM_BASE +
+        "/route/v1/driving/" +
+        q(lng1) +
+        "," +
+        q(lat1) +
+        ";" +
+        q(lng2) +
+        "," +
+        q(lat2) +
+        "?overview=full&geometries=geojson&steps=false";
+      return fetch(url, { method: "GET", mode: "cors" }).then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      }).then(function (data) {
+        if (data.code !== "Ok" || !data.routes || !data.routes[0]) {
+          throw new Error(data.message || data.code || "NoRoute");
+        }
+        const r = data.routes[0];
+        const coords = r.geometry.coordinates.map(function (c) {
+          return [c[1], c[0]];
+        });
+        return {
+          latlngs: coords,
+          distanceM: r.distance,
+          durationSec: r.duration,
+        };
+      });
+    }
+
+    function sleep(ms) {
+      return new Promise(function (resolve) {
+        setTimeout(resolve, ms);
+      });
+    }
+
+    function rebuildDayLatLngsAndAllBounds() {
+      allBounds.length = 0;
+      Object.keys(ITINERARY.stops).forEach(function (sid) {
+        const s = ITINERARY.stops[sid];
+        allBounds.push([s.lat, s.lng]);
+      });
+      ITINERARY.days.forEach(function (day) {
+        const entry = layersByDay[day.id];
+        const dayPts = [];
+        (day.stopIds || []).forEach(function (sid) {
+          const s = ITINERARY.stops[sid];
+          if (s) dayPts.push([s.lat, s.lng]);
+        });
+        entry.group.eachLayer(function (layer) {
+          if (layer instanceof L.Polyline && !(layer instanceof L.Polygon)) {
+            const raw = layer.getLatLngs();
+            const arr = Array.isArray(raw[0]) ? raw.flat() : raw;
+            arr.forEach(function (x) {
+              dayPts.push([x.lat, x.lng]);
+              allBounds.push([x.lat, x.lng]);
+            });
+          }
+        });
+        entry.dayLatLngs = dayPts;
+      });
+    }
+
+    function updateDayButtonRoutingHint(day) {
+      if (!day._metaEl) return;
+      const legs = day.legs || [];
+      if (!legs.length) {
+        day._metaEl.textContent = day.timeNote;
+        return;
+      }
+      const leg = legs[0];
+      if (leg._osrm && leg._osrm.ok) {
+        day._metaEl.textContent =
+          day.timeNote +
+          " · 路网驾车 " +
+          formatDriveDuration(leg._osrm.durationSec) +
+          " / " +
+          Math.round(leg._osrm.distanceKm) +
+          " km";
+      } else if (leg._osrm && leg._osrm.error) {
+        day._metaEl.textContent = day.timeNote + " · 路网不可用，见地图说明";
+      } else {
+        day._metaEl.textContent = day.timeNote + " · 正在请求路网…";
+      }
+    }
+
+    const stopMarkers = {};
+    Object.keys(ITINERARY.stops).forEach(function (sid) {
+      const s = ITINERARY.stops[sid];
+      const m = L.marker([s.lat, s.lng], { icon: stopIcon(s.type) });
+      m.bindPopup(stopPopupHtml(s));
+      m.bindTooltip(stopDestinationTitle(s), {
+        permanent: true,
+        direction: "top",
+        offset: [0, -12],
+        opacity: 1,
+        className: "map-stop-label",
+        interactive: false,
+      });
+      stopMarkers[sid] = m;
+    });
+
+    ITINERARY.days.forEach(function (day) {
+      const group = L.layerGroup();
+
+      day.legs.forEach(function (leg) {
+        const a = ITINERARY.stops[leg.from];
+        const b = ITINERARY.stops[leg.to];
+        if (!a || !b) return;
+        const latlngs = greatCircleLatLngs(a, b, 48);
+        const line = L.polyline(latlngs, {
+          weight: 4,
+          opacity: 0.85,
+          color: "#5ab0ff",
+          dashArray: "10 8",
+        });
+        line.bindPopup(legPopupHtml(leg));
+        line.addTo(group);
+        line._leg = leg;
+        line._day = day;
+        leg._line = line;
+      });
+
+      layersByDay[day.id] = { group: group, dayLatLngs: [], day: day };
+    });
+
+    rebuildDayLatLngsAndAllBounds();
+
+    const overlayAll = L.layerGroup();
+    overlayAll.addTo(map);
+
+    function setLineStyle(activeDayId) {
+      ITINERARY.days.forEach(function (day) {
+        const entry = layersByDay[day.id];
+        entry.group.eachLayer(function (layer) {
+          if (layer instanceof L.Polyline && !(layer instanceof L.Polygon)) {
+            const isActive = activeDayId === null || day.id === activeDayId;
+            layer.setStyle({
+              color: isActive ? "#5ab0ff" : "#6b7c90",
+              weight: isActive ? 5 : 3,
+              opacity: isActive ? 0.92 : 0.45,
+              dashArray: layer._routed ? false : "10 8",
+            });
+          }
+        });
+      });
+    }
+
+    function fitToLatLngs(latlngs) {
+      if (!latlngs.length) return;
+      if (latlngs.length === 1) {
+        map.setView(latlngs[0], 11);
+        return;
+      }
+      map.fitBounds(latlngs, { padding: [36, 36], maxZoom: 9 });
+    }
+
+    function refreshMapSize() {
+      requestAnimationFrame(function () {
+        map.invalidateSize();
+      });
+    }
+
+    function applyFilter(dayId) {
+      activeDayFilter = dayId;
+      overlayAll.clearLayers();
+      if (dayId === null) {
+        Object.keys(layersByDay).forEach(function (k) {
+          overlayAll.addLayer(layersByDay[k].group);
+        });
+        Object.keys(stopMarkers).forEach(function (sid) {
+          overlayAll.addLayer(stopMarkers[sid]);
+        });
+        setLineStyle(null);
+        fitToLatLngs(allBounds.length ? allBounds : [[-0.5, 37.2]]);
+        refreshMapSize();
+        return;
+      }
+      const entry = layersByDay[dayId];
+      if (entry) {
+        overlayAll.addLayer(entry.group);
+        (entry.day.stopIds || []).forEach(function (sid) {
+          if (stopMarkers[sid]) overlayAll.addLayer(stopMarkers[sid]);
+        });
+        setLineStyle(dayId);
+        fitToLatLngs(entry.dayLatLngs.length ? entry.dayLatLngs : allBounds);
+        refreshMapSize();
+      }
+    }
+
+    function runOsrmRouting() {
+      const statusEl = document.getElementById("route-status");
+      const jobs = [];
+      ITINERARY.days.forEach(function (day) {
+        (day.legs || []).forEach(function (leg) {
+          if (leg._line) jobs.push({ day: day, leg: leg, line: leg._line });
+        });
+      });
+      if (!jobs.length) {
+        if (statusEl) statusEl.textContent = "";
+        return Promise.resolve();
+      }
+      var ok = 0;
+      var fail = 0;
+      function step(i) {
+        if (i >= jobs.length) {
+          rebuildDayLatLngsAndAllBounds();
+          applyFilter(activeDayFilter);
+          if (statusEl) {
+            statusEl.textContent =
+              "路网已更新（OSRM / OpenStreetMap）。成功 " +
+              ok +
+              " 段" +
+              (fail ? "，失败 " + fail + " 段（仍显示虚线参考）" : "") +
+              "。";
+          }
+          return;
+        }
+        const job = jobs[i];
+        const a = ITINERARY.stops[job.leg.from];
+        const b = ITINERARY.stops[job.leg.to];
+        if (statusEl) {
+          statusEl.textContent = "正在请求驾车路网… (" + (i + 1) + "/" + jobs.length + ")";
+        }
+        fetchOsrmDrivingRoute(a.lat, a.lng, b.lat, b.lng)
+          .then(function (r) {
+            job.leg._osrm = {
+              ok: true,
+              durationSec: r.durationSec,
+              distanceKm: r.distanceM / 1000,
+            };
+            job.line.setLatLngs(r.latlngs);
+            job.line._routed = true;
+            job.line.bindPopup(legPopupHtml(job.leg));
+            ok++;
+          })
+          .catch(function (err) {
+            job.leg._osrm = { ok: false, error: err && err.message ? err.message : String(err) };
+            job.line._routed = false;
+            job.line.bindPopup(legPopupHtml(job.leg));
+            fail++;
+          })
+          .then(function () {
+            updateDayButtonRoutingHint(job.day);
+            return sleep(280);
+          })
+          .then(function () {
+            step(i + 1);
+          });
+      }
+      if (statusEl) {
+        statusEl.textContent = "正在按 OpenStreetMap 路网规划驾车路线（" + jobs.length + " 段）…";
+      }
+      step(0);
+      return Promise.resolve();
+    }
+
+    const dayListEl = document.getElementById("day-list");
+    ITINERARY.days.forEach(function (day) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "day-btn";
+      btn.setAttribute("role", "tab");
+      btn.dataset.dayId = day.id;
+      const row1 = document.createElement("div");
+      row1.innerHTML = "<strong>" + day.label + "</strong> · " + day.title;
+      const metaEl = document.createElement("div");
+      metaEl.className = "day-meta";
+      metaEl.textContent = day.timeNote + (day.legs && day.legs.length ? " · 正在请求路网…" : "");
+      day._metaEl = metaEl;
+      btn.appendChild(row1);
+      btn.appendChild(metaEl);
+      btn.addEventListener("click", function () {
+        document.querySelectorAll(".day-btn").forEach(function (b) {
+          b.classList.remove("active");
+        });
+        btn.classList.add("active");
+        applyFilter(day.id);
+        if (window.matchMedia("(max-width:768px)").matches) {
+          document.getElementById("sidebar").classList.add("collapsed");
+        }
+      });
+      dayListEl.appendChild(btn);
+    });
+
+    const flightP = document.createElement("p");
+    flightP.style.cssText = "font-size:0.78rem;color:var(--muted);margin:8px 0 0;padding:0 4px;line-height:1.45;";
+    flightP.textContent = ITINERARY.year + " 离境参考：" + ITINERARY.flightNote;
+    dayListEl.appendChild(flightP);
+
+    document.getElementById("btn-overview").addEventListener("click", function () {
+      document.querySelectorAll(".day-btn").forEach(function (b) {
+        b.classList.remove("active");
+      });
+      applyFilter(null);
+    });
+
+    document.getElementById("btn-open-sidebar").addEventListener("click", function () {
+      document.getElementById("sidebar").classList.remove("collapsed");
+      refreshMapSize();
+    });
+    document.getElementById("btn-close-sidebar").addEventListener("click", function () {
+      document.getElementById("sidebar").classList.add("collapsed");
+      refreshMapSize();
+    });
+
+    const mq = window.matchMedia("(max-width:768px)");
+    function sidebarDefault() {
+      const side = document.getElementById("sidebar");
+      if (mq.matches) side.classList.add("collapsed");
+      else side.classList.remove("collapsed");
+      refreshMapSize();
+    }
+    mq.addEventListener("change", sidebarDefault);
+    sidebarDefault();
+
+    applyFilter(null);
+    runOsrmRouting();
+
+    const style = document.createElement("style");
+    style.textContent = "@media (min-width:769px){ .hide-desktop{ display:none !important; } }";
+    document.head.appendChild(style);
+  </script>
+</body>
+</html>
