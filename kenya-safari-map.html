@@ -63,6 +63,13 @@
     }
     .day-list { overflow-y: auto; flex: 1; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
     .day-meta { font-size: 0.72rem; color: var(--muted); margin-top: 4px; }
+    .day-places {
+      font-size: 0.78rem;
+      color: var(--text);
+      margin-top: 6px;
+      line-height: 1.45;
+    }
+    .day-place-line { margin-top: 2px; }
     .map-wrap { flex: 1; position: relative; min-width: 0; }
     #map { height: 100%; width: 100%; }
     .fab-menu {
@@ -86,23 +93,33 @@
       .fab-menu { display: flex; }
     }
     .leaflet-tooltip.map-stop-label {
-      background: rgba(15, 20, 26, 0.92);
-      color: #f1f5f9;
-      border: 1px solid rgba(255, 255, 255, 0.35);
-      border-radius: 6px;
-      padding: 4px 8px;
+      background: transparent !important;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      padding: 2px 4px;
       font-size: 11px;
-      font-weight: 600;
+      font-weight: 700;
       line-height: 1.35;
       max-width: 220px;
       white-space: normal;
       text-align: center;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+      box-shadow: none;
+      text-shadow:
+        0 0 6px rgba(0, 0, 0, 0.95),
+        0 0 2px rgba(0, 0, 0, 1),
+        1px 1px 0 rgba(0, 0, 0, 0.85),
+        -1px -1px 0 rgba(0, 0, 0, 0.85),
+        1px -1px 0 rgba(0, 0, 0, 0.85),
+        -1px 1px 0 rgba(0, 0, 0, 0.85);
       pointer-events: none;
     }
     .leaflet-tooltip.map-stop-label:before {
       display: none;
+    }
+    .leaflet-pane .leaflet-tooltip.map-stop-label {
+      background: transparent !important;
+      box-shadow: none !important;
     }
     .leaflet-container { background: #1a222d; font-family: inherit; }
     .legend {
@@ -162,7 +179,7 @@
         nairobi_pickup: {
           id: "nairobi_pickup",
           area: "内罗毕",
-          hotelDest: "接人酒店·占位",
+          hotelDest: "Hotel pickup · TBD",
           type: "pickup",
           lat: -1.286389,
           lng: 36.817223,
@@ -228,7 +245,7 @@
           id: "2026-06-19",
           label: "6 月 19 日",
           title: "内罗毕 → 马赛马拉",
-          timeNote: "约 06:30 出发 · 至 马赛马拉（Figtree mara camp）",
+          timeNote: "约 06:30 出发",
           stopIds: ["nairobi_pickup", "figtree_mara"],
           legs: [
             {
@@ -244,7 +261,7 @@
           id: "2026-06-20",
           label: "6 月 20 日",
           title: "马赛马拉",
-          timeNote: "马赛马拉（Figtree mara camp）",
+          timeNote: "马赛马拉 · 住同一营地",
           stopIds: ["figtree_mara"],
           legs: [],
         },
@@ -252,7 +269,7 @@
           id: "2026-06-21",
           label: "6 月 21 日",
           title: "马赛马拉",
-          timeNote: "马赛马拉（Figtree mara camp）",
+          timeNote: "马赛马拉 · 住同一营地",
           stopIds: ["figtree_mara"],
           legs: [],
         },
@@ -260,7 +277,7 @@
           id: "2026-06-22",
           label: "6 月 22 日",
           title: "马赛马拉 → 奈瓦沙",
-          timeNote: "换宿 · 奈瓦沙湖（Naivasha simba lodges）",
+          timeNote: "换宿",
           stopIds: ["figtree_mara", "naivasha_simba"],
           legs: [
             {
@@ -276,7 +293,7 @@
           id: "2026-06-23",
           label: "6 月 23 日",
           title: "奈瓦沙 → 肯尼亚山",
-          timeNote: "换宿 · 肯尼亚山（Mount Kenya Leisure Lodge）",
+          timeNote: "换宿",
           stopIds: ["naivasha_simba", "mount_kenya_leisure"],
           legs: [
             {
@@ -292,7 +309,7 @@
           id: "2026-06-24",
           label: "6 月 24 日",
           title: "肯尼亚山 → 桑布鲁",
-          timeNote: "换宿 · 桑布鲁（Samburu simba）",
+          timeNote: "换宿",
           stopIds: ["mount_kenya_leisure", "samburu_simba"],
           legs: [
             {
@@ -308,7 +325,7 @@
           id: "2026-06-25",
           label: "6 月 25 日",
           title: "桑布鲁",
-          timeNote: "桑布鲁（Samburu simba）",
+          timeNote: "桑布鲁 · 住同一营地",
           stopIds: ["samburu_simba"],
           legs: [],
         },
@@ -316,7 +333,7 @@
           id: "2026-06-26",
           label: "6 月 26 日",
           title: "桑布鲁 → 阿伯德尔",
-          timeNote: "换宿 · 阿伯德尔（The Ark lodge）",
+          timeNote: "换宿",
           stopIds: ["samburu_simba", "the_ark"],
           legs: [
             {
@@ -332,7 +349,7 @@
           id: "2026-06-27",
           label: "6 月 27 日",
           title: "阿伯德尔",
-          timeNote: "阿伯德尔（The Ark lodge）",
+          timeNote: "阿伯德尔 · 住同一营地",
           stopIds: ["the_ark"],
           legs: [],
         },
@@ -340,7 +357,7 @@
           id: "2026-06-28",
           label: "6 月 28 日",
           title: "阿伯德尔 → 内罗毕机场",
-          timeNote: "11:30 前抵 内罗毕机场（JKIA）· 行程结束",
+          timeNote: "11:30 前抵机场 · 行程结束",
           stopIds: ["the_ark", "jkia"],
           legs: [
             {
@@ -751,11 +768,22 @@
       btn.dataset.dayId = day.id;
       const row1 = document.createElement("div");
       row1.innerHTML = "<strong>" + day.label + "</strong> · " + day.title;
+      const placesEl = document.createElement("div");
+      placesEl.className = "day-places";
+      (day.stopIds || []).forEach(function (sid) {
+        const s = ITINERARY.stops[sid];
+        if (!s) return;
+        const pl = document.createElement("div");
+        pl.className = "day-place-line";
+        pl.textContent = stopDestinationTitle(s);
+        placesEl.appendChild(pl);
+      });
       const metaEl = document.createElement("div");
       metaEl.className = "day-meta";
       metaEl.textContent = day.timeNote + (day.legs && day.legs.length ? " · 正在请求路网…" : "");
       day._metaEl = metaEl;
       btn.appendChild(row1);
+      btn.appendChild(placesEl);
       btn.appendChild(metaEl);
       btn.addEventListener("click", function () {
         document.querySelectorAll(".day-btn").forEach(function (b) {
